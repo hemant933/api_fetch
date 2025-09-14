@@ -1,3 +1,5 @@
+version: "3.9"
+
 x-airflow-common: &airflow-common
   image: apache/airflow:2.8.1
   env_file:
@@ -6,12 +8,16 @@ x-airflow-common: &airflow-common
     - ./dags:/opt/airflow/dags
     - ./spark_jobs:/opt/airflow/spark_jobs
     - ./requirements.txt:/requirements.txt
-  user: "${AIRFLOW_UID}:${AIRFLOW_GID}"
+    - ~/.kaggle:/root/.kaggle:ro   # Mount kaggle.json for Kaggle API
+  user: "${AIRFLOW_UID:-50000}:${AIRFLOW_GID:-0}"
   depends_on:
     mysql:
-      condition: service_healthy   # wait until mysql is healthy
+      condition: service_healthy
 
 services:
+  # ======================
+  # MySQL Database
+  # ======================
   mysql:
     image: mysql:8.0
     container_name: mysql_airflow
@@ -24,12 +30,15 @@ services:
       - "3306:3306"
     volumes:
       - ./mysql_data:/var/lib/mysql
-    healthcheck:   # ensures MySQL is ready before Airflow runs
+    healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 10s
       timeout: 5s
       retries: 5
 
+  # ======================
+  # Airflow Init (one-time setup)
+  # ======================
   airflow-init:
     <<: *airflow-common
     entrypoint: /bin/bash
@@ -46,8 +55,11 @@ services:
           --password ${_AIRFLOW_WWW_USER_PASSWORD}
     depends_on:
       mysql:
-        condition: service_healthy   #  ensure MySQL is ready
+        condition: service_healthy
 
+  # ======================
+  # Airflow Webserver
+  # ======================
   airflow-webserver:
     <<: *airflow-common
     command: webserver
@@ -57,6 +69,9 @@ services:
       mysql:
         condition: service_healthy
 
+  # ======================
+  # Airflow Scheduler
+  # ======================
   airflow-scheduler:
     <<: *airflow-common
     command: scheduler
@@ -64,6 +79,9 @@ services:
       mysql:
         condition: service_healthy
 
+  # ======================
+  # Spark Master
+  # ======================
   spark-master:
     image: bitnami/spark:3.5.0
     container_name: spark-master
@@ -75,6 +93,9 @@ services:
     volumes:
       - ./spark_jobs:/opt/spark_jobs
 
+  # ======================
+  # Spark Worker
+  # ======================
   spark-worker:
     image: bitnami/spark:3.5.0
     container_name: spark-worker
