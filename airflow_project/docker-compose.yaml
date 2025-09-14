@@ -4,6 +4,9 @@ x-airflow-common: &airflow-common
   image: apache/airflow:2.8.1
   env_file:
     - .env
+  environment:
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__WEBSERVER__SECRET_KEY: "a5f7c6e99d4f42a6a9c8f2fbb6b1e27d4d839e1c58e21f7f1a2d5e9f8b4a3c7d"
   volumes:
     - ./dags:/opt/airflow/dags
     - ./spark_jobs:/opt/airflow/spark_jobs
@@ -88,10 +91,15 @@ services:
     environment:
       - SPARK_MODE=master
     ports:
-      - "7077:7077"
-      - "8081:8080"
+      - "7077:7077"     # Spark cluster communication
+      - "8081:8080"     # Spark Web UI
     volumes:
       - ./spark_jobs:/opt/spark_jobs
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "7077"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # ======================
   # Spark Worker
@@ -106,3 +114,8 @@ services:
       - spark-master
     volumes:
       - ./spark_jobs:/opt/spark_jobs
+    healthcheck:
+      test: ["CMD", "nc", "-z", "spark-master", "7077"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
